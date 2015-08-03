@@ -16,7 +16,7 @@ __author__ = 'Justin Wilson'
 __copyright__ = 'Copyright 2015'
 __credits__ = ['Justin Wilson']
 
-__license__ = 'BSD'
+__license__ = 'MIT'
 __version__ = '1.0.0'
 __maintainer__ = 'Justin Wilson'
 __repository__ = 'https://github.com/juztin/mini'
@@ -45,7 +45,8 @@ COMPRESS_FILE = ['gzip', '-c', '{FILENAME}']
 
 class cprint:
     # http://snippets.dzone.com/posts/show/6944
-    DISABLE = True
+    COLORIZE = True
+    SILENT = False
     OK = '\033[32m'
     WARNING = '\033[33m'
     ERROR = '\033[31m'
@@ -54,19 +55,23 @@ class cprint:
     DEFAULT = '\033[m'
 
     @staticmethod
-    def _print(color, msg, reg_msg=''):
-        if cprint.DISABLE:
-            print(msg, reg_msg)
+    def _print(color, msg, reg_msg='', file=sys.stdout):
+        if cprint.SILENT and file == sys.stdout:
+            return
+        elif cprint.COLORIZE:
+            print("{0}{1}{2}{3}".format(
+                color, msg, cprint.DEFAULT, reg_msg
+            ), file=file)
         else:
-            print("{0}{1}{2}{3}".format(color, msg, cprint.DEFAULT, reg_msg))
+            print(msg, reg_msg, file=file)
 
     @staticmethod
     def warning(msg, reg_msg=''):
-        cprint._print(cprint.WARNING, msg, reg_msg)
+        cprint._print(cprint.WARNING, msg, reg_msg, file=sys.stderr)
 
     @staticmethod
     def error(msg, reg_msg=''):
-        cprint._print(cprint.ERROR, msg, reg_msg)
+        cprint._print(cprint.ERROR, msg, reg_msg, file=sys.stderr)
 
     @staticmethod
     def ok(msg, reg_msg=''):
@@ -87,15 +92,17 @@ def timed(f):
         result = f(*args, **kwds)
         elapsed = time() - start
 
-        if cprint.DISABLE:
-            print('Build finished in {0} seconds'.format(elapsed))
-        else:
+        if cprint.SILENT:
+            return
+        elif cprint.COLORIZE:
             print("{2}{0}\r\n{1}Build finished in {2}{3}{1} seconds{4}".format(
                   '-----------------------------------------------------------',
                   cprint.INFO,
                   cprint.WARNING,
                   elapsed,
                   cprint.DEFAULT))
+        else:
+            print('Build finished in {0} seconds'.format(elapsed))
 
         return result
     return _f
@@ -147,16 +154,15 @@ def _perform_utilproc(src, cmd_args,
                 if p.returncode != 0:
                     cprint.error('ERROR PROCESSING: ', '{0} -> {1}'.
                                  format(srcname, args))
-                    print(stderr)
+                    cprint.error(stderr)
                     continue
 
                 if on_cmd is not None:
                     on_cmd(srcname, stdout)
                 elif verbose:
-                    print(stdout)
+                    cprint(stdout)
 
         except (IOError, os.error) as err:
-            print(err)
             msg = "Failed to perform util on {0}: ".format(srcname, str(err))
             return (False, msg)
 
@@ -304,13 +310,19 @@ parser.add_option('-v', '--verbose', action='store_true', default=False,
                   help='verbose output.')
 parser.add_option('-p', '--path', default=CWD,
                   help='path to static content to minify/compress')
+parser.add_option('-s', '--silent', action='store_true', default=False,
+                  help='silent output.')
 
 (options, args) = parser.parse_args()
-cprint.DISABLE = not options.color
+cprint.SILENT = options.silent
+cprint.COLORIZE = options.color
+if options.silent:
+    options.verbose = False
 
 try:
-    build(options.path, UTIL_ROOT, IGNORE_FILES, options.verbose)
+    build(options.path, UTIL_ROOT, IGNORE_FILES,
+          options.verbose)
 except Exception as err:
-    print(traceback.format_exc())
+    cprint.error(traceback.format_exc())
     cprint.error(err)
     cprint.error('Build Failed!')
